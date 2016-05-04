@@ -6,9 +6,10 @@ import codecs
 import re
 import xml.etree.cElementTree as ET
 import cerberus
+
 import schema
 
-OSM_PATH = "seattle_washington.osm"
+OSM_PATH = "example.osm"
 
 NODES_PATH = "nodes.csv"
 NODE_TAGS_PATH = "nodes_tags.csv"
@@ -19,7 +20,7 @@ WAY_TAGS_PATH = "ways_tags.csv"
 LOWER_COLON = re.compile(r'^([a-z]|_)+:([a-z]|_)+')
 PROBLEMCHARS = re.compile(r'[=\+/&<>;\'"\?%#$@\,\. \t\r\n]')
 
-from schema import Schema
+SCHEMA = schema.schema
 
 # Make sure the fields order in the csvs matches the column order in the sql table schema
 NODE_FIELDS = ['id', 'lat', 'lon', 'user', 'uid', 'version', 'changeset', 'timestamp']
@@ -39,31 +40,31 @@ def shape_element(element, node_attr_fields=NODE_FIELDS, way_attr_fields=WAY_FIE
 
     # YOUR CODE HERE
     if element.tag == 'node':
-        for field in element.attrib.keys():
-            if field in NODE_FIELDS:
+        if all(field in element.attrib.keys() for field in node_attr_fields): # ensure that all fields required for the table are in the node 
+            for field in node_attr_fields:
                 node_attribs[field] = element.attrib[field]
-            
-        for stag in element.iterfind('./tag'):
-            tags_data = {}
-            if PROBLEMCHARS.search(stag.attrib['k']) == None:
-                tags_data['id'] = element.attrib['id']
-                tags_data['value'] = stag.attrib['v']
-                
-                if re.search(':', stag.attrib['k']) != None:
-                    tags_data['key'] = stag.attrib['k'].split(":",1)[1]
-                    tags_data['type'] = stag.attrib['k'].split(":",1)[0]
-                
-                else:
-                    tags_data['key'] = stag.attrib['k']
-                    tags_data['type'] = 'regular'
-            
-                tags.append(tags_data)
-        
+
+            for stag in element.iterfind('./tag'):
+                tags_data = {}
+                if problem_chars.search(stag.attrib['k']) == None:
+                    tags_data['id'] = element.attrib['id']
+                    tags_data['value'] = stag.attrib['v']
+
+                    if LOWER_COLON.search(stag.attrib['k']) != None:
+                        tags_data['key'] = stag.attrib['k'].split(":",1)[1]
+                        tags_data['type'] = stag.attrib['k'].split(":",1)[0]
+
+                    else:
+                        tags_data['key'] = stag.attrib['k']
+                        tags_data['type'] = 'regular'
+
+                    tags.append(tags_data)
+
         return {'node': node_attribs, 'node_tags': tags}
-    
+
     elif element.tag == 'way':
         for field in element.attrib.keys():
-            if field in WAY_FIELDS:
+            if field in way_attr_fields:
                 way_attribs[field] = element.attrib[field]
             
         pos = 0
@@ -75,23 +76,23 @@ def shape_element(element, node_attr_fields=NODE_FIELDS, way_attr_fields=WAY_FIE
             pos += 1
             
             way_nodes.append(way_nodes_nd_data)
-        
+
         for wn in element.iterfind('./tag'):
             way_nodes_tags_data = {}
-            if PROBLEMCHARS.search(wn.attrib['k']) == None:
+            if problem_chars.search(wn.attrib['k']) == None:
                 way_nodes_tags_data['id'] = element.attrib['id']
                 way_nodes_tags_data['value'] = wn.attrib['v']
                 
-                if re.search(':', wn.attrib['k']) != None:
+                if LOWER_COLON.search(wn.attrib['k']) != None:
                     way_nodes_tags_data['key'] = wn.attrib['k'].split(":",1)[1]
                     way_nodes_tags_data['type'] = wn.attrib['k'].split(":",1)[0]
-                
+
                 else:
                     way_nodes_tags_data['key'] = wn.attrib['k']
                     way_nodes_tags_data['type'] = 'regular'
-            
+
                 tags.append(way_nodes_tags_data)
-        
+
         return {'way': way_attribs, 'way_nodes': way_nodes, 'way_tags': tags}
 
 # ================================================== #
@@ -108,7 +109,7 @@ def get_element(osm_file, tags=('node', 'way', 'relation')):
             root.clear()
 
 
-def validate_element(element, validator, schema=Schema):
+def validate_element(element, validator, schema=SCHEMA):
     """Raise ValidationError if element does not match schema"""
     if validator.validate(element, schema) is not True:
         field, errors = next(validator.errors.iteritems())
